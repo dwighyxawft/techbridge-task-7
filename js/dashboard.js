@@ -31,7 +31,7 @@
    - On a real website the API lives on the same address too -> "".
    If you deploy the backend somewhere else, put its address here instead. */
 const isLocalDev = ["localhost", "127.0.0.1", ""].includes(window.location.hostname);
-const API_BASE = isLocalDev && window.location.port !== "3000" ? "https://techbridge-task-7-backend-production.up.railway.app" : "";
+const API_BASE = "https://techbridge-task-7-backend-production.up.railway.app";
 
 // The sample intern shown in the welcome section.
 const INTERN = { name: "Alex", track: "Web Development" };
