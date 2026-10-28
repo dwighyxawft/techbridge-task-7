@@ -1,32 +1,37 @@
 /* ==========================================================
-   TechBridge Intern Dashboard (Task 6)
+   TechBridge Intern Dashboard (Task 7: connected to the API)
    Plain JavaScript: no frameworks.
 
-   How it works, in one line:
-   the 8 tasks live in one array of objects (section 1). Every time
-   something changes, renderAll() redraws the progress numbers, the
-   progress bar and the task cards from that array (section 4).
+   What changed since Task 6:
+   Task 6 kept the 8 tasks inside this file.
+   Task 7 asks the BACKEND for them using fetch():
 
-   What this file does:
-   1. Task tracker .......... cards built from the tasks array
-   2. Mark as Completed ..... updates the count, percentage and bar
-   3. Filters ............... All / Completed / In Progress / Not Started
-   4. View Task ............. a details dialog, no page refresh
-   5. Technology explorer ... Next.js / Vue.js / Angular / Backend
-   Extras: progress is saved in the browser (localStorage), a small
-   notification, and a message when all 8 tasks are completed.
+       Dashboard  ->  fetch()  ->  REST API  ->  Node + Express  ->  tasks.json
+
+   The flow for every action:
+   1. loadTasks()     GET  /api/tasks        draw the dashboard
+   2. viewTask()      GET  /api/tasks/:id    show one task in the dialog
+   3. changeStatus()  PUT  /api/tasks/:id    mark completed / undo, then reload
+   4. resetProgress() POST /api/reset        back to the starting statuses
+   5. checkBackend()  GET  /api/health       the "Backend Status" light
+
+   Every request can be slow or fail, so the page has three states:
+   "loading" (spinner), "ready" (tasks), "error" (message + Try again).
    ========================================================== */
 
 "use strict";
 
 /* ----------------------------------------------------------
-   1. DATA
-   Each task is an OBJECT; the tasks are an ARRAY of those objects.
-   To change a task, edit it here and nothing else.
-   status must be "Completed", "In Progress" or "Not Started".
-   (The status written here is only the starting point: after a
-   visitor changes tasks, their progress is saved in the browser.)
+   1. SETTINGS AND DATA
    ---------------------------------------------------------- */
+
+/* Where is the API?
+   - Open http://localhost:3000/dashboard.html (served by Express)  -> same address, so "".
+   - Open the frontend with Live Server or by double-clicking the file -> call http://localhost:3000.
+   - On a real website the API lives on the same address too -> "".
+   If you deploy the backend somewhere else, put its address here instead. */
+const isLocalDev = ["localhost", "127.0.0.1", ""].includes(window.location.hostname);
+const API_BASE = isLocalDev && window.location.port !== "3000" ? "http://localhost:3000" : "";
 
 // The sample intern shown in the welcome section.
 const INTERN = { name: "Alex", track: "Web Development" };
@@ -34,122 +39,12 @@ const INTERN = { name: "Alex", track: "Web Development" };
 // Details of the Challenge Hub (Task 5). Keep these in step with challenges.js.
 const CHALLENGE_SUMMARY = { total: 10, data: 5, web: 5 };
 
-const STORAGE_KEY = "techbridge-dashboard-progress";
-const STATUSES = ["Completed", "In Progress", "Not Started"];
-
-const tasks = [
-  {
-    number: 1,
-    day: 1,
-    title: "Build the TechBridge Homepage",
-    description: "Create the first version of the TechBridge website using HTML and CSS.",
-    difficulty: "Beginner",
-    status: "Completed",
-    build: [
-      "A homepage that introduces TechBridge, its programs and its 30-day internship",
-      "Clear navigation, a community call-to-action, contact details and a footer",
-      "A layout that works on desktop, tablet and mobile"
-    ],
-    connects: null
-  },
-  {
-    number: 2,
-    day: 4,
-    title: "Build the TechBridge Programs Experience",
-    description: "Create a Programs experience presenting TechBridge's available learning programs.",
-    difficulty: "Beginner",
-    status: "Completed",
-    build: [
-      "A dedicated Programs page or experience for Data Analytics and Web Development",
-      "Clear information on what each program is about and the skills it develops",
-      "A clear next step for visitors"
-    ],
-    connects: "The website you built in Task 1."
-  },
-  {
-    number: 3,
-    day: 8,
-    title: "Build the Internship Tasks Experience",
-    description: "Create an interface that presents the TechBridge internship tasks and helps users understand the internship journey.",
-    difficulty: "Beginner \u2192 Intermediate",
-    status: "Completed",
-    build: [
-      "An introduction to the structured 30-day internship",
-      "All 8 tasks, each with its number, title, day and a brief description",
-      "A clear sense of the sequence and the increasing difficulty",
-      "Built with HTML5 and CSS3, and responsive on desktop, tablet and mobile"
-    ],
-    connects: "The Home and Programs pages from Tasks 1 and 2."
-  },
-  {
-    number: 4,
-    day: 11,
-    title: "Build an Interactive Internship Roadmap",
-    description: "Use JavaScript to allow visitors to switch between the Data Analytics and Web Development internship tracks.",
-    difficulty: "Beginner \u2192 Intermediate",
-    status: "In Progress",
-    build: [
-      "A way for visitors to select the Data Analytics or Web Development track",
-      "Task content that switches between the two tracks without a page refresh",
-      "Built with HTML5, CSS3 and JavaScript, with no frameworks"
-    ],
-    connects: "The task experience from Task 3."
-  },
-  {
-    number: 5,
-    day: 15,
-    title: "Build the TechBridge Challenge Hub",
-    description: "Create an interactive Challenge Hub where visitors can browse, filter and explore challenges from the two TechBridge tracks.",
-    difficulty: "Beginner \u2192 Intermediate",
-    status: "Not Started",
-    build: [
-      "A Challenge Hub page where visitors can browse challenges from both tracks",
-      "Filters for track and difficulty",
-      "Challenge details that appear without a page refresh"
-    ],
-    connects: "The Home, Programs and roadmap pages from earlier tasks."
-  },
-  {
-    number: 6,
-    day: 19,
-    title: "Build the TechBridge Intern Dashboard",
-    description: "Create an interactive intern dashboard where an intern can see their progress, track their tasks and explore the Challenge Hub.",
-    difficulty: "Intermediate",
-    status: "Not Started",
-    build: [
-      "A welcome section, plus a progress bar and percentage that update as tasks are completed",
-      "A task tracker with filters and task details",
-      "A link to the Challenge Hub and a Modern Web Technologies explorer"
-    ],
-    connects: "The Challenge Hub from Task 5."
-  },
-  {
-    number: 7,
-    day: 22,
-    title: "Build the Task Submission System",
-    description: "Create an interface through which interns can prepare and submit their task work.",
-    difficulty: "Intermediate",
-    status: "Not Started",
-    build: [
-      "An interface where interns can prepare their task work",
-      "A way for interns to submit that work"
-    ],
-    connects: null
-  },
-  {
-    number: 8,
-    day: 26,
-    title: "Build the Complete TechBridge Internship Platform",
-    description: "Combine the different components created during the internship into a complete TechBridge platform.",
-    difficulty: "Intermediate",
-    status: "Not Started",
-    build: [
-      "The components from the earlier tasks, combined",
-      "A complete TechBridge internship platform"
-    ],
-    connects: "The components created across the internship."
-  }
-];
+// The API sends statuses like "in-progress". This turns them into words for the page.
+const STATUS_LABELS = {
+  "completed": "Completed",
+  "in-progress": "In Progress",
+  "not-started": "Not Started"
+};
 
 // Difficulty label -> number of filled bars (1, 2 or 3)
 const DIFFICULTY_LEVEL = {
@@ -233,12 +128,17 @@ const TECHNOLOGIES = {
    2. STATE AND PAGE ELEMENTS
    ---------------------------------------------------------- */
 
-let currentFilter = "All";      // the task filter the visitor chose
+let tasks = [];                 // filled by the API (starts empty)
+let loadState = "loading";      // "loading", "ready" or "error"
+let errorMessage = "";          // what went wrong, shown in the error box
+let currentFilter = "all";      // "all", "completed", "in-progress" or "not-started"
 let currentTech = "nextjs";     // the technology shown in the explorer
-let lastTaskNumber = null;      // the task whose dialog was opened, so focus can return to it
+let lastTaskId = null;          // the task whose dialog was opened, so focus can return to it
+let backendOnline = null;       // true, false, or null while still checking
 let toastTimer = null;
 
 const taskList = document.getElementById("task-list");
+const taskState = document.getElementById("task-state");
 const noTasks = document.getElementById("no-tasks");
 const taskCount = document.getElementById("task-count");
 const filterButtons = document.querySelectorAll(".seg-btn");
@@ -250,16 +150,151 @@ const techTabs = document.querySelectorAll(".tech-tabs .tab");
 const techPanel = document.getElementById("tech-panel");
 
 /* ----------------------------------------------------------
-   3. SMALL HELPER FUNCTIONS
+   3. TALKING TO THE API
+   ---------------------------------------------------------- */
+
+/* One small function for every request.
+   It returns the JSON from the server, or throws an Error with a readable message. */
+async function apiRequest(path, options) {
+  const settings = options || {};
+  if (settings.body) {
+    settings.headers = { "Content-Type": "application/json" };   // we are sending JSON
+  }
+
+  let response;
+  try {
+    response = await fetch(API_BASE + path, settings);
+  } catch (error) {
+    // fetch() only fails like this when the server cannot be reached at all
+    throw new Error("Could not reach the backend. Is the server running?");
+  }
+
+  let data = null;
+  try {
+    data = await response.json();
+  } catch (error) {
+    /* the response had no JSON body */
+  }
+
+  if (!response.ok) {
+    // the server answered, but with an error (404, 400, ...)
+    throw new Error((data && data.error) || "The server returned an error (" + response.status + ").");
+  }
+  return data;
+}
+
+// Show "Connected" or "Offline" in the welcome section.
+function setBackend(isOnline) {
+  backendOnline = isOnline;
+  const box = document.getElementById("backend-status");
+  box.dataset.state = isOnline ? "online" : "offline";
+  document.getElementById("backend-status-text").textContent = isOnline ? "Connected" : "Offline";
+  // If tasks are already on screen and the backend disappears, say so.
+  document.getElementById("offline-banner").hidden = isOnline || loadState !== "ready";
+}
+
+// Ask the server "are you there?" every few seconds.
+async function checkBackend() {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(function () { controller.abort(); }, 3000);
+    const response = await fetch(API_BASE + "/api/health", { signal: controller.signal });
+    clearTimeout(timer);
+    if (!response.ok) {
+      throw new Error("not ok");
+    }
+    const wasOffline = backendOnline === false;
+    setBackend(true);
+    // The server came back: load the tasks again by itself.
+    if (loadState === "error") {
+      loadTasks();
+    } else if (wasOffline) {
+      loadTasks(true);
+    }
+  } catch (error) {
+    setBackend(false);
+  }
+}
+
+/* GET /api/tasks
+   silent = true refreshes the list without flashing the loading message. */
+async function loadTasks(silent) {
+  if (!silent) {
+    loadState = "loading";
+    renderAll();
+  }
+  try {
+    tasks = await apiRequest("/api/tasks");
+    loadState = "ready";
+    setBackend(true);
+  } catch (error) {
+    setBackend(false);
+    if (silent && tasks.length > 0) {
+      showToast("Could not refresh the tasks. " + error.message);
+      return;
+    }
+    loadState = "error";
+    errorMessage = error.message;
+  }
+  renderAll();
+}
+
+/* PUT /api/tasks/:id  then GET /api/tasks again.
+   status is "completed", "in-progress" or "not-started". */
+async function changeStatus(id, status) {
+  setButtonsBusy(id, true);
+  try {
+    await apiRequest("/api/tasks/" + id, {
+      method: "PUT",
+      body: JSON.stringify({ status: status })
+    });
+    await loadTasks(true);          // ask the backend for the fresh list
+    renderAll(false, status === "completed" ? id : null);
+
+    const left = tasks.length - countByStatus("completed");
+    if (status === "completed") {
+      showToast(left === 0
+        ? "All " + tasks.length + " tasks completed. Well done!"
+        : "Task " + id + " marked as completed. " + left + " to go.");
+    } else {
+      showToast("Task " + id + " moved back to your list.");
+    }
+  } catch (error) {
+    setBackend(false);
+    renderAll();
+    showToast("Could not update the task. " + error.message);
+  }
+}
+
+// POST /api/reset
+async function resetProgress() {
+  try {
+    await apiRequest("/api/reset", { method: "POST" });
+    currentFilter = "all";
+    await loadTasks(true);
+    renderAll(true);
+    showToast("Progress reset to the starting point.");
+  } catch (error) {
+    showToast("Could not reset. " + error.message);
+  }
+}
+
+// While a request is on its way, stop double clicks.
+function setButtonsBusy(id, busy) {
+  document.querySelectorAll('[data-action][data-number="' + id + '"]').forEach(function (button) {
+    button.disabled = busy;
+    if (busy && button.dataset.action === "complete") {
+      button.textContent = "Saving...";
+    }
+  });
+}
+
+/* ----------------------------------------------------------
+   4. SMALL HELPER FUNCTIONS
    ---------------------------------------------------------- */
 
 function icon(name) {
   return `<svg class="icon" aria-hidden="true"><use href="#${name}"/></svg>`;
-}
-
-// "In Progress" -> "in-progress" (used for CSS class names)
-function slug(status) {
-  return status.toLowerCase().replace(" ", "-");
 }
 
 function getLevel(difficulty) {
@@ -276,66 +311,40 @@ function countByStatus(status) {
 
 // 3 of 8 -> 37.5, 4 of 8 -> 50, 8 of 8 -> 100
 function getPercent() {
-  const done = countByStatus("Completed");
-  return Math.round((done / tasks.length) * 1000) / 10;
+  if (tasks.length === 0) {
+    return 0;
+  }
+  return Math.round((countByStatus("completed") / tasks.length) * 1000) / 10;
 }
 
 // The overall status for the welcome section (conditional logic).
 function getInternStatus() {
-  const done = countByStatus("Completed");
+  const done = countByStatus("completed");
   if (done === tasks.length) {
-    return "Completed";
-  } else if (done === 0 && countByStatus("In Progress") === 0) {
-    return "Not Started";
+    return "completed";
+  } else if (done === 0 && countByStatus("in-progress") === 0) {
+    return "not-started";
   } else {
-    return "In Progress";
+    return "in-progress";
   }
 }
 
-function findTask(number) {
-  return tasks.find(function (task) { return task.number === number; });
+function showToast(message) {
+  toast.textContent = message;
+  toast.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { toast.classList.remove("show"); }, 3500);
 }
 
-/* Keep one task marked "In Progress": the earliest task that is not done.
-   If nothing is in progress, the first "Not Started" task moves up. */
-function updateCurrentTask() {
-  const hasCurrent = tasks.some(function (task) { return task.status === "In Progress"; });
-  if (!hasCurrent) {
-    const next = tasks.find(function (task) { return task.status === "Not Started"; });
-    if (next) {
-      next.status = "In Progress";
-    }
-  }
-}
-
-/* ----------------------------------------------------------
-   Saving progress in the browser (localStorage).
-   Wrapped in try/catch because storage can be blocked.
-   ---------------------------------------------------------- */
-function saveProgress() {
-  try {
-    const statuses = tasks.map(function (task) { return task.status; });
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(statuses));
-  } catch (error) {
-    /* storage unavailable: the dashboard still works, it just will not remember */
-  }
-}
-
-function loadProgress() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    const valid = Array.isArray(saved) && saved.length === tasks.length &&
-      saved.every(function (status) { return STATUSES.includes(status); });
-    if (valid) {
-      tasks.forEach(function (task, index) { task.status = saved[index]; });
-    }
-  } catch (error) {
-    /* nothing saved, or storage unavailable: keep the starting statuses */
+function focusTaskButton(id) {
+  const button = document.querySelector(`#task-${id} [data-action="view"]`);
+  if (button) {
+    button.focus();
   }
 }
 
 /* ----------------------------------------------------------
-   4. SHOWING THE DASHBOARD
+   5. SHOWING THE DASHBOARD
    ---------------------------------------------------------- */
 
 function renderWelcome() {
@@ -343,104 +352,148 @@ function renderWelcome() {
   document.getElementById("intern-track").textContent = INTERN.track;
   document.getElementById("avatar").textContent = INTERN.name.charAt(0).toUpperCase();
 
-  const status = getInternStatus();
   const badge = document.getElementById("intern-status");
-  badge.textContent = status;
-  badge.dataset.state = slug(status);
+  if (loadState === "ready") {
+    const status = getInternStatus();
+    badge.textContent = STATUS_LABELS[status];
+    badge.dataset.state = status;
+  } else {
+    badge.textContent = loadState === "loading" ? "Loading..." : "Unavailable";
+    badge.dataset.state = "not-started";
+  }
 }
 
 function renderProgress() {
+  const ready = loadState === "ready";
   const total = tasks.length;
-  const done = countByStatus("Completed");
+  const done = countByStatus("completed");
   const percent = getPercent();
+  const dash = "\u2013";
 
-  document.getElementById("done-count").textContent = done;
-  document.getElementById("total-count").textContent = total;
-  document.getElementById("percent").textContent = percent + "%";
-  document.getElementById("stat-total").textContent = total;
-  document.getElementById("stat-done").textContent = done;
-  document.getElementById("stat-left").textContent = total - done;
+  document.getElementById("done-count").textContent = ready ? done : dash;
+  document.getElementById("total-count").textContent = ready ? total : dash;
+  document.getElementById("percent").textContent = ready ? percent + "%" : dash;
+  document.getElementById("stat-total").textContent = ready ? total : dash;
+  document.getElementById("stat-done").textContent = ready ? done : dash;
+  document.getElementById("stat-left").textContent = ready ? total - done : dash;
 
   // the bar
-  document.getElementById("bar-fill").style.width = percent + "%";
+  document.getElementById("bar-fill").style.width = ready ? percent + "%" : "0%";
   const bar = document.getElementById("bar");
-  bar.setAttribute("aria-valuenow", percent);
-  bar.setAttribute("aria-valuetext", percent + " percent complete, " + done + " of " + total + " tasks");
+  bar.setAttribute("aria-valuenow", ready ? percent : 0);
+  bar.setAttribute("aria-valuetext", ready
+    ? percent + " percent complete, " + done + " of " + total + " tasks"
+    : "Progress not available yet");
 
   // one little numbered dot per task
   let dots = "";
-  tasks.forEach(function (task) {
-    dots += `<li class="dot dot-${slug(task.status)}" title="Task ${task.number}: ${task.status}">${task.number}</li>`;
-  });
+  if (ready) {
+    tasks.forEach(function (task) {
+      dots += `<li class="dot dot-${task.status}" title="Task ${task.id}: ${STATUS_LABELS[task.status]}">${task.id}</li>`;
+    });
+  }
   document.getElementById("task-dots").innerHTML = dots;
 
   // the "current task" box
-  const current = tasks.find(function (task) { return task.status === "In Progress"; });
   const currentBox = document.getElementById("current-task");
-  if (current) {
+  const current = tasks.find(function (task) { return task.status === "in-progress"; });
+  if (ready && current) {
     currentBox.innerHTML = `
       <div>
         <p class="current-label">Current task</p>
-        <p class="current-title">Task ${current.number} &middot; ${current.title}</p>
+        <p class="current-title">Task ${current.id} &middot; ${current.title}</p>
       </div>
-      <button type="button" class="btn btn-primary btn-sm" data-action="view" data-number="${current.number}">Continue Task ${icon("i-arrow-right")}</button>`;
+      <button type="button" class="btn btn-primary btn-sm" data-action="view" data-number="${current.id}">Continue Task ${icon("i-arrow-right")}</button>`;
   } else {
     currentBox.innerHTML = `
       <div>
         <p class="current-label">Current task</p>
-        <p class="current-title">No task in progress</p>
+        <p class="current-title">${ready ? "No task in progress" : "Waiting for your tasks..."}</p>
       </div>`;
   }
 
   // the celebration message
-  document.getElementById("celebrate").hidden = done !== total;
+  document.getElementById("celebrate").hidden = !(ready && total > 0 && done === total);
 }
 
 function renderFilters() {
   filterButtons.forEach(function (button) {
     const filter = button.dataset.filter;
-    const count = filter === "All" ? tasks.length : countByStatus(filter);
+    const count = filter === "all" ? tasks.length : countByStatus(filter);
     button.setAttribute("aria-pressed", filter === currentFilter ? "true" : "false");
-    button.querySelector(".count").textContent = count;
+    button.querySelector(".count").textContent = loadState === "ready" ? count : "";
   });
 }
 
-function buildTaskCard(task, index, changedNumber) {
-  const state = slug(task.status);
-  const isDone = task.status === "Completed";
-  const justDone = task.number === changedNumber ? " just-completed" : "";
+function buildTaskCard(task, index, changedId) {
+  const isDone = task.status === "completed";
+  const justDone = task.id === changedId ? " just-completed" : "";
+  const label = STATUS_LABELS[task.status];
 
   const mainButton = isDone
-    ? `<button type="button" class="btn-text" data-action="undo" data-number="${task.number}">Undo</button>`
-    : `<button type="button" class="btn btn-primary btn-sm" data-action="complete" data-number="${task.number}">Mark as Completed</button>`;
+    ? `<button type="button" class="btn-text" data-action="undo" data-number="${task.id}">Undo</button>`
+    : `<button type="button" class="btn btn-primary btn-sm" data-action="complete" data-number="${task.id}">Mark as Completed</button>`;
 
   return `
-    <li class="task" id="task-${task.number}" data-status="${state}" style="--i:${index}">
+    <li class="task" id="task-${task.id}" data-status="${task.status}" style="--i:${index}">
       <article class="task-card${justDone}">
         <div class="task-head">
-          <span class="task-num">TASK ${task.number}</span>
-          <span class="pill pill-${state}"><span class="pill-icon">${isDone ? icon("i-check") : ""}</span><span class="sr-only">Status: </span>${task.status}</span>
+          <span class="task-num">TASK ${task.id}</span>
+          <span class="pill pill-${task.status}"><span class="pill-icon">${isDone ? icon("i-check") : ""}</span><span class="sr-only">Status: </span>${label}</span>
         </div>
         <h3>${task.title}</h3>
         <p class="task-desc">${task.description}</p>
         <p class="task-meta"><span>Day ${task.day}</span>${buildPips(task.difficulty)}<span>${task.difficulty}</span></p>
         <div class="task-actions">
-          <button type="button" class="btn btn-outline btn-sm" data-action="view" data-number="${task.number}" aria-haspopup="dialog" aria-label="View Task ${task.number}: ${task.title}">View Task</button>
+          <button type="button" class="btn btn-outline btn-sm" data-action="view" data-number="${task.id}" aria-haspopup="dialog" aria-label="View Task ${task.id}: ${task.title}">View Task</button>
           ${mainButton}
         </div>
       </article>
     </li>`;
 }
 
+// Loading message, error message, or nothing (when the tasks are ready).
+function renderTrackerState() {
+  if (loadState === "loading") {
+    taskState.hidden = false;
+    taskState.innerHTML = `
+      <div class="state-box state-loading" role="status">
+        <span class="spinner" aria-hidden="true"></span>
+        <p>Loading tasks...</p>
+      </div>`;
+  } else if (loadState === "error") {
+    taskState.hidden = false;
+    taskState.innerHTML = `
+      <div class="state-box state-error" role="alert">
+        <h3>Unable to load tasks.</h3>
+        <p>Please check your connection or try again.</p>
+        <p class="state-hint">${errorMessage}</p>
+        <button type="button" class="btn btn-primary" data-retry>Try again</button>
+      </div>`;
+  } else {
+    taskState.hidden = true;
+    taskState.innerHTML = "";
+  }
+}
+
 // Draw the task cards that match the current filter.
-function renderTasks(animate, changedNumber) {
+function renderTasks(animate, changedId) {
+  renderTrackerState();
+
+  if (loadState !== "ready") {
+    taskList.innerHTML = "";
+    noTasks.hidden = true;
+    taskCount.textContent = "";
+    return;
+  }
+
   const visible = tasks.filter(function (task) {
-    return currentFilter === "All" || task.status === currentFilter;
+    return currentFilter === "all" || task.status === currentFilter;
   });
 
   let html = "";
   visible.forEach(function (task, index) {
-    html += buildTaskCard(task, index, changedNumber);
+    html += buildTaskCard(task, index, changedId);
   });
   taskList.innerHTML = html;
   taskList.classList.toggle("is-animated", animate === true);
@@ -449,80 +502,19 @@ function renderTasks(animate, changedNumber) {
   taskCount.textContent = "Showing " + visible.length + " of " + tasks.length + " tasks";
 }
 
-// Redraw everything that depends on the task statuses.
-function renderAll(animate, changedNumber) {
+// Redraw everything that depends on the tasks.
+function renderAll(animate, changedId) {
   renderWelcome();
   renderProgress();
   renderFilters();
-  renderTasks(animate, changedNumber);
+  renderTasks(animate, changedId);
 }
 
 /* ----------------------------------------------------------
-   5. CHANGING A TASK (Mark as Completed, Undo, Reset)
+   6. TASK DETAILS (the dialog, filled from GET /api/tasks/:id)
    ---------------------------------------------------------- */
 
-function showToast(message) {
-  toast.textContent = message;
-  toast.classList.add("show");
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(function () { toast.classList.remove("show"); }, 3000);
-}
-
-function focusTaskButton(number) {
-  const button = document.querySelector(`#task-${number} [data-action="view"]`);
-  if (button) {
-    button.focus();
-  }
-}
-
-function completeTask(number) {
-  const task = findTask(number);
-  if (!task || task.status === "Completed") {
-    return;
-  }
-  task.status = "Completed";
-  updateCurrentTask();
-  saveProgress();
-  renderAll(false, number);
-
-  const left = tasks.length - countByStatus("Completed");
-  showToast(left === 0
-    ? "All 8 tasks completed. Well done!"
-    : "Task " + number + " marked as completed. " + left + " to go.");
-}
-
-function undoTask(number) {
-  const task = findTask(number);
-  if (!task || task.status !== "Completed") {
-    return;
-  }
-  task.status = "Not Started";
-  updateCurrentTask();
-  saveProgress();
-  renderAll(false);
-  showToast("Task " + number + " moved back to your list.");
-}
-
-function resetProgress() {
-  tasks.forEach(function (task, index) { task.status = DEFAULT_STATUSES[index]; });
-  currentFilter = "All";
-  try { localStorage.removeItem(STORAGE_KEY); } catch (error) { /* ignore */ }
-  renderAll(true);
-  showToast("Progress reset to the starting point.");
-}
-
-/* ----------------------------------------------------------
-   6. TASK DETAILS (the dialog)
-   ---------------------------------------------------------- */
-
-function openTask(number) {
-  const task = findTask(number);
-  if (!task) {
-    return;
-  }
-  lastTaskNumber = number;
-  const state = slug(task.status);
-
+function buildTaskDetails(task) {
   let items = "";
   task.build.forEach(function (item) {
     items += `<li>${icon("i-check")}${item}</li>`;
@@ -533,27 +525,57 @@ function openTask(number) {
 
   dialogContent.innerHTML = `
     <div class="dialog-badges">
-      <span class="task-num">TASK ${task.number}</span>
-      <span class="pill pill-${state}">${task.status}</span>
+      <span class="task-num">TASK ${task.id}</span>
+      <span class="pill pill-${task.status}">${STATUS_LABELS[task.status]}</span>
     </div>
     <h2 id="task-dialog-title">${task.title}</h2>
     <p class="dialog-lead">${task.description}</p>
     <p class="task-meta"><span>Day ${task.day}</span>${buildPips(task.difficulty)}<span>${task.difficulty}</span></p>
     <h3 class="dialog-h">What you're expected to create</h3>
     <ul class="fit-list">${items}</ul>
-    ${connects}`;
+    ${connects}
+    <p class="api-note">Loaded from <code>GET /api/tasks/${task.id}</code></p>`;
 
-  const mainButton = task.status === "Completed"
-    ? `<button type="button" class="btn btn-outline" data-action="undo" data-number="${task.number}">Undo completion</button>`
-    : `<button type="button" class="btn btn-primary" data-action="complete" data-number="${task.number}">Mark as Completed</button>`;
+  const mainButton = task.status === "completed"
+    ? `<button type="button" class="btn btn-outline" data-action="undo" data-number="${task.id}">Undo completion</button>`
+    : `<button type="button" class="btn btn-primary" data-action="complete" data-number="${task.id}">Mark as Completed</button>`;
   dialogActions.innerHTML = `${mainButton}<button type="button" class="btn btn-outline" data-close>Close</button>`;
+}
 
-  dialogContent.scrollTop = 0;
+function openDialog() {
   document.documentElement.classList.add("modal-open");
-  if (typeof dialog.showModal === "function") {
-    dialog.showModal();
-  } else {
-    dialog.setAttribute("open", "");
+  if (!dialog.open) {
+    if (typeof dialog.showModal === "function") {
+      dialog.showModal();
+    } else {
+      dialog.setAttribute("open", "");
+    }
+  }
+}
+
+// Open the dialog straight away with a loading message, then ask the API for the task.
+async function viewTask(id) {
+  lastTaskId = id;
+  dialogContent.innerHTML = `
+    <h2 id="task-dialog-title" class="sr-only">Task details</h2>
+    <div class="state-box state-loading" role="status">
+      <span class="spinner" aria-hidden="true"></span>
+      <p>Loading task...</p>
+    </div>`;
+  dialogActions.innerHTML = `<button type="button" class="btn btn-outline" data-close>Close</button>`;
+  dialogContent.scrollTop = 0;
+  openDialog();
+
+  try {
+    const task = await apiRequest("/api/tasks/" + id);   // GET /api/tasks/3
+    setBackend(true);
+    buildTaskDetails(task);
+  } catch (error) {
+    setBackend(false);
+    dialogContent.innerHTML = `
+      <h2 id="task-dialog-title">Unable to load this task.</h2>
+      <p class="dialog-lead">Please check your connection or try again.</p>
+      <p class="state-hint">${error.message}</p>`;
   }
 }
 
@@ -568,8 +590,8 @@ function closeTask() {
 
 function afterClose() {
   document.documentElement.classList.remove("modal-open");
-  if (lastTaskNumber !== null) {
-    focusTaskButton(lastTaskNumber);   // put the keyboard back on that task
+  if (lastTaskId !== null) {
+    focusTaskButton(lastTaskId);   // put the keyboard back on that task
   }
 }
 
@@ -648,22 +670,30 @@ function renderTech(key) {
    8. EVENT LISTENERS
    ---------------------------------------------------------- */
 
-// Buttons inside the page (task cards and the current-task box).
+// Buttons inside the page (task cards, the current-task box and "Try again").
 document.addEventListener("click", function (event) {
+  if (event.target.closest("[data-retry]")) {
+    loadTasks();
+    return;
+  }
+
+  if (event.target.closest("[data-recheck]")) {
+    checkBackend();
+    return;
+  }
+
   const button = event.target.closest("[data-action]");
   if (!button || dialog.contains(button)) {
     return;
   }
-  const number = Number(button.dataset.number);
+  const id = Number(button.dataset.number);
 
   if (button.dataset.action === "view") {
-    openTask(number);
+    viewTask(id);
   } else if (button.dataset.action === "complete") {
-    completeTask(number);
-    focusTaskButton(number);
+    changeStatus(id, "completed");
   } else if (button.dataset.action === "undo") {
-    undoTask(number);
-    focusTaskButton(number);
+    changeStatus(id, "not-started");
   }
 });
 
@@ -671,13 +701,9 @@ document.addEventListener("click", function (event) {
 dialog.addEventListener("click", function (event) {
   const action = event.target.closest("[data-action]");
   if (action) {
-    const number = Number(action.dataset.number);
-    if (action.dataset.action === "complete") {
-      completeTask(number);
-    } else if (action.dataset.action === "undo") {
-      undoTask(number);
-    }
+    const id = Number(action.dataset.number);
     closeTask();
+    changeStatus(id, action.dataset.action === "complete" ? "completed" : "not-started");
     return;
   }
   if (event.target === dialog || event.target.closest("[data-close]")) {
@@ -700,7 +726,7 @@ document.querySelector(".tracker-bar .seg").addEventListener("click", function (
 });
 
 document.getElementById("show-all").addEventListener("click", function () {
-  currentFilter = "All";
+  currentFilter = "all";
   renderFilters();
   renderTasks(true);
 });
@@ -741,14 +767,12 @@ document.querySelector(".tech-tabs").addEventListener("keydown", function (event
    9. START
    ---------------------------------------------------------- */
 
-// Remember the starting statuses so "Reset progress" can restore them.
-const DEFAULT_STATUSES = tasks.map(function (task) { return task.status; });
-
 document.getElementById("challenge-total").textContent = CHALLENGE_SUMMARY.total;
 document.getElementById("challenge-data").textContent = CHALLENGE_SUMMARY.data;
 document.getElementById("challenge-web").textContent = CHALLENGE_SUMMARY.web;
 
-loadProgress();
-updateCurrentTask();
-renderAll(false);
 renderTech(currentTech);
+renderAll(false);          // shows the loading message straight away
+loadTasks();               // asks the API for the tasks
+checkBackend();            // lights up "Backend Status"
+setInterval(checkBackend, 5000);

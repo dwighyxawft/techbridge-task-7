@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 
@@ -84,17 +84,22 @@
           <div class="welcome-text">
             <h1>Welcome back, <span id="intern-name">Alex</span></h1>
             <p class="welcome-role"><span id="intern-track">Web Development</span> Intern</p>
-            <p class="welcome-msg">This is your TechBridge internship dashboard. Track your progress across all 8 tasks, see what to work on next, and explore the Challenge Hub when you want extra practice.</p>
+            <p class="welcome-msg">This is your TechBridge internship dashboard. Your tasks now come from the TechBridge backend API: track your progress across all 8 tasks, see what to work on next, and explore the Challenge Hub when you want extra practice.</p>
             <ul class="welcome-links">
               <li><a href="#progress">Progress</a></li>
               <li><a href="#tracker">Task tracker</a></li>
               <li><a href="#challenge-hub">Challenge Hub</a></li>
               <li><a href="#technologies">Web technologies</a></li>
+              <li><a href="#api">The API</a></li>
             </ul>
           </div>
           <div class="welcome-status">
             <p class="welcome-status-label">Internship status</p>
-            <p class="status-big" id="intern-status" data-state="progress">In Progress</p>
+            <p class="status-big" id="intern-status" data-state="in-progress">Loading...</p>
+            <p class="backend-status" id="backend-status" data-state="checking">
+              <span class="backend-dot" aria-hidden="true"></span>
+              Backend Status: <strong id="backend-status-text">Checking...</strong>
+            </p>
           </div>
         </div>
 
@@ -149,12 +154,18 @@
           <p>All 8 internship tasks in one place. Open a task to read what is expected, and mark it as completed when you are done.</p>
         </div>
 
+        <!-- Shown when the backend stops while the page is open -->
+        <div class="offline-banner" id="offline-banner" role="alert" hidden>
+          <p><strong>Unable to reach the backend.</strong> You are seeing the last loaded tasks, and changes cannot be saved until the backend is running again.</p>
+          <button type="button" class="btn btn-outline btn-sm" data-recheck>Check again</button>
+        </div>
+
         <div class="tracker-bar">
           <div class="seg" role="group" aria-label="Filter tasks by status">
-            <button type="button" class="seg-btn" data-filter="All" aria-pressed="true">All <span class="count"></span></button>
-            <button type="button" class="seg-btn" data-filter="Completed" aria-pressed="false">Completed <span class="count"></span></button>
-            <button type="button" class="seg-btn" data-filter="In Progress" aria-pressed="false">In Progress <span class="count"></span></button>
-            <button type="button" class="seg-btn" data-filter="Not Started" aria-pressed="false">Not Started <span class="count"></span></button>
+            <button type="button" class="seg-btn" data-filter="all" aria-pressed="true">All <span class="count"></span></button>
+            <button type="button" class="seg-btn" data-filter="completed" aria-pressed="false">Completed <span class="count"></span></button>
+            <button type="button" class="seg-btn" data-filter="in-progress" aria-pressed="false">In Progress <span class="count"></span></button>
+            <button type="button" class="seg-btn" data-filter="not-started" aria-pressed="false">Not Started <span class="count"></span></button>
           </div>
           <button type="button" class="reset-btn" id="reset-progress">
             <svg class="icon" aria-hidden="true"><use href="#i-reset"/></svg>
@@ -164,7 +175,10 @@
 
         <p class="result-count" id="task-count" role="status" aria-live="polite"></p>
 
-        <!-- Task cards are drawn by dashboard.js -->
+        <!-- Loading and error messages (drawn by dashboard.js) -->
+        <div id="task-state" hidden></div>
+
+        <!-- Task cards are drawn by dashboard.js from the API data -->
         <ul class="task-grid" id="task-list"></ul>
 
         <div class="no-results" id="no-tasks" hidden>
@@ -215,6 +229,45 @@
 
         <!-- Drawn by dashboard.js -->
         <div class="tech-panel" id="tech-panel" role="tabpanel" aria-labelledby="tech-tab-nextjs" tabindex="-1"></div>
+      </div>
+    </section>
+
+
+    <!-- How the dashboard gets its data -->
+    <section class="section section-soft" id="api">
+      <div class="container">
+        <div class="section-head">
+          <h2>How this dashboard gets its data</h2>
+          <p>The tasks are no longer written inside the page. The dashboard asks a small Node.js and Express backend for them, and sends updates back to it.</p>
+        </div>
+
+        <ol class="flow api-flow" aria-label="How the dashboard and the backend talk">
+          <li class="flow-step">Dashboard</li>
+          <li class="flow-arrow" aria-hidden="true"><svg class="icon"><use href="#i-arrow-right"/></svg></li>
+          <li class="flow-step">fetch()</li>
+          <li class="flow-arrow" aria-hidden="true"><svg class="icon"><use href="#i-arrow-right"/></svg></li>
+          <li class="flow-step">REST API</li>
+          <li class="flow-arrow" aria-hidden="true"><svg class="icon"><use href="#i-arrow-right"/></svg></li>
+          <li class="flow-step">Node.js + Express</li>
+          <li class="flow-arrow" aria-hidden="true"><svg class="icon"><use href="#i-arrow-right"/></svg></li>
+          <li class="flow-step">Task data</li>
+        </ol>
+
+        <div class="api-table-wrap">
+          <table class="api-table">
+            <caption class="sr-only">The API endpoints used by the dashboard</caption>
+            <thead>
+              <tr><th scope="col">Method</th><th scope="col">Endpoint</th><th scope="col">What it does</th><th scope="col">Used for</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><span class="method method-get">GET</span></td><td><code>/api/tasks</code></td><td>Returns all 8 tasks as JSON</td><td>Drawing the task cards and progress</td></tr>
+              <tr><td><span class="method method-get">GET</span></td><td><code>/api/tasks/:id</code></td><td>Returns one task, for example <code>/api/tasks/3</code></td><td>The View Task dialog</td></tr>
+              <tr><td><span class="method method-put">PUT</span></td><td><code>/api/tasks/:id</code></td><td>Updates a task's status. Body: <code>{ "status": "completed" }</code></td><td>Mark as Completed and Undo</td></tr>
+              <tr><td><span class="method method-get">GET</span></td><td><code>/api/health</code></td><td>Says whether the backend is running</td><td>The Backend Status light</td></tr>
+              <tr><td><span class="method method-post">POST</span></td><td><code>/api/reset</code></td><td>Puts every task back to its starting status</td><td>The Reset progress button</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </section>
 
@@ -274,6 +327,6 @@
     </div>
   </footer>
 
-  <script src="dashboard.js" defer></script>
+  <script src="js/dashboard.js" defer></script>
 </body>
 </html>
